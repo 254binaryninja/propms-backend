@@ -1,0 +1,1240 @@
+openapi: 3.1.0
+info:
+  title: PropMS API
+  description: |
+    Rental property management platform API.
+    Powers the landlord dashboard and integrates with Africa's Talking SMS and USSD APIs.
+  version: 1.0.0
+  contact:
+    name: PropMS Team
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+  - url: https://api.propms.co.ke
+    description: Production
+
+tags:
+  - name: auth
+    description: Authentication
+  - name: properties
+    description: Property management
+  - name: tenants
+    description: Tenant management
+  - name: issues
+    description: Maintenance issues
+  - name: payments
+    description: Rent payments
+  - name: waitlist
+    description: Prospect waitlist
+  - name: messaging
+    description: SMS messaging via Africa's Talking
+  - name: ussd
+    description: Africa's Talking USSD callback handler
+  - name: dashboard
+    description: Aggregated dashboard stats
+
+# ─────────────────────────────────────────────
+# REUSABLE COMPONENTS
+# ─────────────────────────────────────────────
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    # ── Enums ──
+    TenantStatus:
+      type: string
+      enum: [active, notice_given, vacated]
+      description: Lifecycle state of a tenant
+
+    PaymentStatus:
+      type: string
+      enum: [pending, paid, overdue]
+
+    IssueType:
+      type: string
+      enum: [water, electricity, other]
+
+    IssueUrgency:
+      type: string
+      enum: [high, medium, low]
+
+    IssueStatus:
+      type: string
+      enum: [pending, in_progress, resolved]
+
+    IssueSource:
+      type: string
+      enum: [ussd, admin]
+
+    # ── Property ──
+    Property:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Kahawa Towers
+        total_units:
+          type: integer
+          example: 20
+        occupied_units:
+          type: integer
+          description: Derived — count of active tenants
+          readOnly: true
+        vacant_units:
+          type: integer
+          description: Derived — total_units minus occupied_units
+          readOnly: true
+        occupancy_rate:
+          type: number
+          format: float
+          description: Percentage 0–100, derived
+          readOnly: true
+        monthly_rent_collected:
+          type: number
+          format: float
+          description: Sum of paid payments this calendar month
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required: [name, total_units]
+
+    PropertyCreate:
+      type: object
+      properties:
+        name:
+          type: string
+        total_units:
+          type: integer
+          minimum: 1
+      required: [name, total_units]
+
+    PropertyUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        total_units:
+          type: integer
+          minimum: 1
+
+    # ── Tenant ──
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Grace Wanjiku
+        phone:
+          type: string
+          example: "+254712345678"
+          description: E.164 format
+        house_no:
+          type: string
+          example: 4B
+        property_id:
+          type: string
+          format: uuid
+        property_name:
+          type: string
+          readOnly: true
+        rent_amount:
+          type: number
+          format: float
+          example: 25000
+        lease_start_date:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/TenantStatus'
+        vacated_at:
+          type: string
+          format: date
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required: [name, phone, house_no, property_id, rent_amount, lease_start_date]
+
+    TenantCreate:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+          example: "+254712345678"
+        house_no:
+          type: string
+        property_id:
+          type: string
+          format: uuid
+        rent_amount:
+          type: number
+          format: float
+        lease_start_date:
+          type: string
+          format: date
+      required: [name, phone, house_no, property_id, rent_amount, lease_start_date]
+
+    TenantUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        house_no:
+          type: string
+        rent_amount:
+          type: number
+          format: float
+        status:
+          $ref: '#/components/schemas/TenantStatus'
+
+    TenantVacate:
+      type: object
+      properties:
+        vacated_at:
+          type: string
+          format: date
+          description: Defaults to today if omitted
+        note:
+          type: string
+          description: Optional move-out note
+
+    # ── Issue ──
+    Issue:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        tenant_name:
+          type: string
+          readOnly: true
+        house_no:
+          type: string
+          readOnly: true
+        property_id:
+          type: string
+          format: uuid
+          readOnly: true
+        property_name:
+          type: string
+          readOnly: true
+        type:
+          $ref: '#/components/schemas/IssueType'
+        description:
+          type: string
+          nullable: true
+          description: Free text — populated when type is "other" or via USSD free input
+        urgency:
+          $ref: '#/components/schemas/IssueUrgency'
+        status:
+          $ref: '#/components/schemas/IssueStatus'
+        source:
+          $ref: '#/components/schemas/IssueSource'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+      required: [tenant_id, type, urgency]
+
+    IssueCreate:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/IssueType'
+        description:
+          type: string
+          nullable: true
+        urgency:
+          $ref: '#/components/schemas/IssueUrgency'
+        source:
+          $ref: '#/components/schemas/IssueSource'
+          default: admin
+      required: [tenant_id, type, urgency]
+
+    IssueStatusUpdate:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/IssueStatus'
+        urgency:
+          $ref: '#/components/schemas/IssueUrgency'
+      required: [status]
+
+    # ── Payment ──
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        tenant_name:
+          type: string
+          readOnly: true
+        property_id:
+          type: string
+          format: uuid
+          readOnly: true
+        property_name:
+          type: string
+          readOnly: true
+        house_no:
+          type: string
+          readOnly: true
+        amount:
+          type: number
+          format: float
+        due_date:
+          type: string
+          format: date
+        paid_date:
+          type: string
+          format: date
+          nullable: true
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required: [tenant_id, amount, due_date]
+
+    PaymentCreate:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: float
+        due_date:
+          type: string
+          format: date
+      required: [tenant_id, amount, due_date]
+
+    PaymentMarkPaid:
+      type: object
+      properties:
+        paid_date:
+          type: string
+          format: date
+          description: Defaults to today if omitted
+
+    # ── Waitlist ──
+    WaitlistEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: John Kamau
+        phone:
+          type: string
+          example: "+254798765432"
+        property_id:
+          type: string
+          format: uuid
+        property_name:
+          type: string
+          readOnly: true
+        position:
+          type: integer
+          description: Queue position — 1-indexed, derived from created_at order
+          readOnly: true
+        source:
+          type: string
+          enum: [ussd, admin]
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required: [name, phone, property_id]
+
+    WaitlistCreate:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        property_id:
+          type: string
+          format: uuid
+        source:
+          type: string
+          enum: [ussd, admin]
+          default: admin
+      required: [name, phone, property_id]
+
+    # ── Messaging ──
+    MassSMSRequest:
+      type: object
+      properties:
+        property_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: If null, sends to ALL active tenants across all properties
+        message:
+          type: string
+          maxLength: 160
+      required: [message]
+
+    SingleSMSRequest:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        message:
+          type: string
+          maxLength: 160
+      required: [tenant_id, message]
+
+    SMSResponse:
+      type: object
+      properties:
+        recipients:
+          type: integer
+          description: Number of SMS messages dispatched
+        at_message_id:
+          type: string
+          description: Africa's Talking message ID
+        status:
+          type: string
+          enum: [queued, failed]
+
+    # ── Dashboard ──
+    DashboardStats:
+      type: object
+      properties:
+        total_properties:
+          type: integer
+        total_active_tenants:
+          type: integer
+        rent_collected_this_month:
+          type: number
+          format: float
+        rent_outstanding_this_month:
+          type: number
+          format: float
+        open_issues:
+          type: integer
+        delayed_payments:
+          type: integer
+          description: Payments with status=overdue
+        waitlist_total:
+          type: integer
+        properties_summary:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              occupancy_rate:
+                type: number
+              vacant_units:
+                type: integer
+              occupied_units:
+                type: integer
+              total_units:
+                type: integer
+
+    # ── Auth ──
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+      required: [email, password]
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          default: bearer
+        expires_in:
+          type: integer
+          description: Seconds until expiry
+
+    # ── USSD ──
+    USSDRequest:
+      type: object
+      description: Payload sent by Africa's Talking to our USSD callback
+      properties:
+        sessionId:
+          type: string
+        serviceCode:
+          type: string
+          example: "*384#"
+        phoneNumber:
+          type: string
+          example: "+254712345678"
+        text:
+          type: string
+          description: Accumulated user input separated by *
+          example: "1*2*1"
+        networkCode:
+          type: string
+      required: [sessionId, serviceCode, phoneNumber, text]
+
+    # ── Shared ──
+    PaginatedMeta:
+      type: object
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        per_page:
+          type: integer
+        pages:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
+      required: [detail]
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnprocessableEntity:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+security:
+  - BearerAuth: []
+
+# ─────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────
+paths:
+
+  # ── AUTH ──
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Login and get JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        "200":
+          description: JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Get current admin profile
+      responses:
+        "200":
+          description: Admin user object
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  email:
+                    type: string
+                  name:
+                    type: string
+
+  # ── DASHBOARD ──
+  /dashboard:
+    get:
+      tags: [dashboard]
+      summary: Aggregated stats for the main dashboard
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStats'
+
+  # ── PROPERTIES ──
+  /properties:
+    get:
+      tags: [properties]
+      summary: List all properties
+      responses:
+        "200":
+          description: Array of properties
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Property'
+                  meta:
+                    $ref: '#/components/schemas/PaginatedMeta'
+    post:
+      tags: [properties]
+      summary: Create a property
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyCreate'
+      responses:
+        "201":
+          description: Created property
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /properties/{property_id}:
+    parameters:
+      - name: property_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [properties]
+      summary: Get a single property
+      responses:
+        "200":
+          description: Property detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [properties]
+      summary: Update a property
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyUpdate'
+      responses:
+        "200":
+          description: Updated property
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+    delete:
+      tags: [properties]
+      summary: Delete a property (only if no active tenants)
+      responses:
+        "204":
+          description: Deleted
+        "409":
+          description: Property has active tenants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── TENANTS ──
+  /tenants:
+    get:
+      tags: [tenants]
+      summary: List tenants
+      parameters:
+        - name: property_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/TenantStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated tenants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tenant'
+                  meta:
+                    $ref: '#/components/schemas/PaginatedMeta'
+    post:
+      tags: [tenants]
+      summary: Create a tenant — triggers welcome SMS with USSD PIN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantCreate'
+      responses:
+        "201":
+          description: Tenant created and welcome SMS sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /tenants/{tenant_id}:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [tenants]
+      summary: Get tenant detail
+      responses:
+        "200":
+          description: Tenant with payment history and open issues
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Tenant'
+                  - type: object
+                    properties:
+                      recent_payments:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Payment'
+                      open_issues:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Issue'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [tenants]
+      summary: Update tenant info
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantUpdate'
+      responses:
+        "200":
+          description: Updated tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+
+  /tenants/{tenant_id}/vacate:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [tenants]
+      summary: Mark tenant as vacated — frees unit, notifies waitlist #1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantVacate'
+      responses:
+        "200":
+          description: Tenant vacated; waitlist SMS sent if applicable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant:
+                    $ref: '#/components/schemas/Tenant'
+                  waitlist_notified:
+                    type: boolean
+                  waitlist_entry:
+                    $ref: '#/components/schemas/WaitlistEntry'
+                    nullable: true
+
+  /tenants/{tenant_id}/reset-pin:
+    parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [tenants]
+      summary: Reset USSD PIN — sends new PIN via SMS
+      responses:
+        "200":
+          description: PIN reset and SMS sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: PIN reset. SMS sent to +254712345678
+
+  # ── ISSUES ──
+  /issues:
+    get:
+      tags: [issues]
+      summary: List issues
+      parameters:
+        - name: property_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/IssueStatus'
+        - name: urgency
+          in: query
+          schema:
+            $ref: '#/components/schemas/IssueUrgency'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated issues
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Issue'
+                  meta:
+                    $ref: '#/components/schemas/PaginatedMeta'
+    post:
+      tags: [issues]
+      summary: Create issue (admin-side)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueCreate'
+      responses:
+        "201":
+          description: Issue created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issue'
+
+  /issues/{issue_id}:
+    parameters:
+      - name: issue_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [issues]
+      summary: Update issue status or urgency
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueStatusUpdate'
+      responses:
+        "200":
+          description: Updated issue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issue'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ── PAYMENTS ──
+  /payments:
+    get:
+      tags: [payments]
+      summary: List payments
+      parameters:
+        - name: property_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/PaymentStatus'
+        - name: month
+          in: query
+          schema:
+            type: string
+            example: "2026-04"
+            description: Filter by month in YYYY-MM format
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated payments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Payment'
+                  meta:
+                    $ref: '#/components/schemas/PaginatedMeta'
+    post:
+      tags: [payments]
+      summary: Create a payment record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentCreate'
+      responses:
+        "201":
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+
+  /payments/{payment_id}/mark-paid:
+    parameters:
+      - name: payment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [payments]
+      summary: Mark a payment as paid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentMarkPaid'
+      responses:
+        "200":
+          description: Payment marked paid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+
+  /payments/{payment_id}/send-reminder:
+    parameters:
+      - name: payment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [payments]
+      summary: Send rent reminder SMS for this payment via AT
+      responses:
+        "200":
+          description: SMS dispatched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SMSResponse'
+
+  # ── WAITLIST ──
+  /waitlist:
+    get:
+      tags: [waitlist]
+      summary: List waitlist entries
+      parameters:
+        - name: property_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Waitlist entries ordered by position
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WaitlistEntry'
+                  meta:
+                    $ref: '#/components/schemas/PaginatedMeta'
+    post:
+      tags: [waitlist]
+      summary: Add to waitlist (admin) — sends confirmation SMS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WaitlistCreate'
+      responses:
+        "201":
+          description: Added to waitlist and confirmation SMS sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WaitlistEntry'
+
+  /waitlist/{entry_id}:
+    parameters:
+      - name: entry_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [waitlist]
+      summary: Remove from waitlist
+      responses:
+        "204":
+          description: Removed
+
+  /waitlist/{entry_id}/promote:
+    parameters:
+      - name: entry_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [waitlist]
+      summary: Promote waitlist entry to active tenant
+      description: |
+        Converts the waitlist entry into a full Tenant record.
+        Sends welcome SMS with USSD PIN. Removes entry from waitlist.
+        Requires house_no and rent_amount to complete the tenant record.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                house_no:
+                  type: string
+                rent_amount:
+                  type: number
+                  format: float
+                lease_start_date:
+                  type: string
+                  format: date
+              required: [house_no, rent_amount, lease_start_date]
+      responses:
+        "201":
+          description: Tenant created from waitlist entry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+
+  # ── MESSAGING ──
+  /messaging/mass-sms:
+    post:
+      tags: [messaging]
+      summary: Send mass SMS to all tenants in a property (or all properties)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MassSMSRequest'
+      responses:
+        "200":
+          description: SMS dispatched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SMSResponse'
+
+  /messaging/single-sms:
+    post:
+      tags: [messaging]
+      summary: Send SMS to a single tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SingleSMSRequest'
+      responses:
+        "200":
+          description: SMS dispatched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SMSResponse'
+
+  # ── USSD CALLBACK ──
+  /ussd/callback:
+    post:
+      tags: [ussd]
+      summary: Africa's Talking USSD session callback
+      description: |
+        Receives USSD session state from Africa's Talking and returns menu text.
+        Response must be plain text prefixed with CON (continue) or END (terminate session).
+
+        Menu flow:
+        - Root: 1 = I'm a tenant (PIN gate) | 2 = Find a home (public)
+        - Tenant path: PIN → 1 Report issue | 2 Rent balance
+        - Issue: 1 Water | 2 Electricity | 3 Other (free text)
+        - Prospect path: select property → vacancy result → 1 Join waitlist | 2 End
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/USSDRequest'
+      responses:
+        "200":
+          description: USSD response string
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                continue:
+                  value: "CON Welcome to PropMS\n1. I'm a tenant\n2. Find a home"
+                end:
+                  value: "END Your issue has been reported. We'll respond shortly."
