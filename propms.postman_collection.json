@@ -1,0 +1,667 @@
+{
+  "info": {
+    "name": "PropMS API",
+    "description": "Postman collection for the PropMS rental property management API (FastAPI). Covers auth, properties, tenants, issues, payments, waitlist, messaging, USSD callback, and dashboard endpoints.\n\nUsage:\n1. Set the `base_url` variable (default `http://localhost:8000`).\n2. Run `Auth > Login` first — the test script saves the JWT into the `access_token` collection variable.\n3. All other requests inherit Bearer auth from the collection.\n4. After creating a property/tenant/issue/payment/waitlist entry, copy the returned `id` into the corresponding `*_id` collection variable (or update it via the Tests tab).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "admin_email", "value": "admin@propms.co.ke", "type": "string" },
+    { "key": "admin_password", "value": "changeme123", "type": "string" },
+    { "key": "property_id", "value": "", "type": "string" },
+    { "key": "tenant_id", "value": "", "type": "string" },
+    { "key": "issue_id", "value": "", "type": "string" },
+    { "key": "payment_id", "value": "", "type": "string" },
+    { "key": "waitlist_entry_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/",
+              "host": ["{{base_url}}"],
+              "path": [""]
+            },
+            "description": "Returns service health status. Public endpoint (no auth)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.access_token) {",
+                  "    pm.collectionVariables.set('access_token', json.access_token);",
+                  "    console.log('access_token saved to collection variable');",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Authenticate admin and return a JWT. The test script stores `access_token` automatically."
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "Get the authenticated admin user profile."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Properties",
+      "item": [
+        {
+          "name": "List Properties",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/properties",
+              "host": ["{{base_url}}"],
+              "path": ["properties"]
+            },
+            "description": "List all properties with derived metrics (occupied/vacant units, occupancy rate, monthly rent collected)."
+          }
+        },
+        {
+          "name": "Create Property",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.id) pm.collectionVariables.set('property_id', json.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Greenview Apartments\",\n  \"total_units\": 12\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/properties",
+              "host": ["{{base_url}}"],
+              "path": ["properties"]
+            },
+            "description": "Create a new property. Saves returned `id` to `property_id`."
+          }
+        },
+        {
+          "name": "Get Property",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/properties/{{property_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["properties", "{{property_id}}"]
+            },
+            "description": "Get a single property by ID."
+          }
+        },
+        {
+          "name": "Update Property",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Greenview Apartments (Renamed)\",\n  \"total_units\": 14\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/properties/{{property_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["properties", "{{property_id}}"]
+            },
+            "description": "Partially update a property. Both fields are optional."
+          }
+        },
+        {
+          "name": "Delete Property",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/properties/{{property_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["properties", "{{property_id}}"]
+            },
+            "description": "Delete a property. Fails with 409 if any active tenants exist."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tenants",
+      "item": [
+        {
+          "name": "List Tenants",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/tenants?page=1&per_page=20",
+              "host": ["{{base_url}}"],
+              "path": ["tenants"],
+              "query": [
+                { "key": "property_id", "value": "{{property_id}}", "disabled": true },
+                { "key": "status", "value": "active", "description": "active | notice_given | vacated", "disabled": true },
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "20" }
+              ]
+            },
+            "description": "List tenants with optional filters and pagination."
+          }
+        },
+        {
+          "name": "Create Tenant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.id) pm.collectionVariables.set('tenant_id', json.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Wanjiku\",\n  \"phone\": \"+254712345678\",\n  \"house_no\": \"A1\",\n  \"property_id\": \"{{property_id}}\",\n  \"rent_amount\": 15000,\n  \"lease_start_date\": \"2026-04-01\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tenants",
+              "host": ["{{base_url}}"],
+              "path": ["tenants"]
+            },
+            "description": "Create a new tenant. Phone must match `+254XXXXXXXXX`. Saves returned `id` to `tenant_id`."
+          }
+        },
+        {
+          "name": "Get Tenant",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/tenants/{{tenant_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["tenants", "{{tenant_id}}"]
+            },
+            "description": "Get tenant detail with recent payments and open issues."
+          }
+        },
+        {
+          "name": "Update Tenant",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane W. Mwangi\",\n  \"rent_amount\": 16000,\n  \"status\": \"active\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tenants/{{tenant_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["tenants", "{{tenant_id}}"]
+            },
+            "description": "Partially update tenant fields."
+          }
+        },
+        {
+          "name": "Vacate Tenant",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vacated_at\": \"2026-04-29\",\n  \"note\": \"End of lease\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tenants/{{tenant_id}}/vacate",
+              "host": ["{{base_url}}"],
+              "path": ["tenants", "{{tenant_id}}", "vacate"]
+            },
+            "description": "Mark tenant as vacated. `vacated_at` and `note` are optional."
+          }
+        },
+        {
+          "name": "Reset Tenant PIN",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/tenants/{{tenant_id}}/reset-pin",
+              "host": ["{{base_url}}"],
+              "path": ["tenants", "{{tenant_id}}", "reset-pin"]
+            },
+            "description": "Generate a new 4-digit USSD PIN and send via SMS."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Issues",
+      "item": [
+        {
+          "name": "List Issues",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/issues?page=1&per_page=20",
+              "host": ["{{base_url}}"],
+              "path": ["issues"],
+              "query": [
+                { "key": "property_id", "value": "{{property_id}}", "disabled": true },
+                { "key": "status", "value": "pending", "description": "pending | in_progress | resolved", "disabled": true },
+                { "key": "urgency", "value": "high", "description": "high | medium | low", "disabled": true },
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "20" }
+              ]
+            },
+            "description": "List issues with optional filters and pagination."
+          }
+        },
+        {
+          "name": "Create Issue",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.id) pm.collectionVariables.set('issue_id', json.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenant_id\": \"{{tenant_id}}\",\n  \"type\": \"water\",\n  \"description\": \"Leaking pipe under the kitchen sink.\",\n  \"urgency\": \"high\",\n  \"source\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/issues",
+              "host": ["{{base_url}}"],
+              "path": ["issues"]
+            },
+            "description": "Create an issue. `type`: water | electricity | other. `urgency`: high | medium | low. `source`: ussd | admin."
+          }
+        },
+        {
+          "name": "Update Issue Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"urgency\": \"medium\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/issues/{{issue_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["issues", "{{issue_id}}"]
+            },
+            "description": "Update an issue's status (and optionally urgency). Setting status to `resolved` stamps `resolved_at`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "List Payments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payments?page=1&per_page=20",
+              "host": ["{{base_url}}"],
+              "path": ["payments"],
+              "query": [
+                { "key": "property_id", "value": "{{property_id}}", "disabled": true },
+                { "key": "tenant_id", "value": "{{tenant_id}}", "disabled": true },
+                { "key": "status", "value": "pending", "description": "pending | paid | overdue", "disabled": true },
+                { "key": "month", "value": "2026-04", "description": "YYYY-MM", "disabled": true },
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "20" }
+              ]
+            },
+            "description": "List payments with optional filters. Auto-recomputes overdue status on read."
+          }
+        },
+        {
+          "name": "Create Payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.id) pm.collectionVariables.set('payment_id', json.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenant_id\": \"{{tenant_id}}\",\n  \"amount\": 15000,\n  \"due_date\": \"2026-05-01\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payments",
+              "host": ["{{base_url}}"],
+              "path": ["payments"]
+            },
+            "description": "Create a payment record. Auto-sets status to `overdue` if `due_date` is in the past."
+          }
+        },
+        {
+          "name": "Mark Payment Paid",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paid_date\": \"2026-04-29\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payments/{{payment_id}}/mark-paid",
+              "host": ["{{base_url}}"],
+              "path": ["payments", "{{payment_id}}", "mark-paid"]
+            },
+            "description": "Mark a payment as paid. `paid_date` is optional (defaults to today)."
+          }
+        },
+        {
+          "name": "Send Payment Reminder",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payments/{{payment_id}}/send-reminder",
+              "host": ["{{base_url}}"],
+              "path": ["payments", "{{payment_id}}", "send-reminder"]
+            },
+            "description": "Send rent reminder SMS to the tenant for this payment."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Waitlist",
+      "item": [
+        {
+          "name": "List Waitlist",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/waitlist",
+              "host": ["{{base_url}}"],
+              "path": ["waitlist"],
+              "query": [
+                { "key": "property_id", "value": "{{property_id}}", "disabled": true }
+              ]
+            },
+            "description": "List waitlist entries ordered by position (FIFO per property)."
+          }
+        },
+        {
+          "name": "Add to Waitlist",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.id) pm.collectionVariables.set('waitlist_entry_id', json.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Peter Otieno\",\n  \"phone\": \"+254722123456\",\n  \"property_id\": \"{{property_id}}\",\n  \"source\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/waitlist",
+              "host": ["{{base_url}}"],
+              "path": ["waitlist"]
+            },
+            "description": "Add a person to the waitlist. `source`: ussd | admin."
+          }
+        },
+        {
+          "name": "Remove from Waitlist",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/waitlist/{{waitlist_entry_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["waitlist", "{{waitlist_entry_id}}"]
+            },
+            "description": "Remove a waitlist entry."
+          }
+        },
+        {
+          "name": "Promote Waitlist Entry to Tenant",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"house_no\": \"B2\",\n  \"rent_amount\": 18000,\n  \"lease_start_date\": \"2026-05-01\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/waitlist/{{waitlist_entry_id}}/promote",
+              "host": ["{{base_url}}"],
+              "path": ["waitlist", "{{waitlist_entry_id}}", "promote"]
+            },
+            "description": "Convert a waitlist entry into an active tenant; entry is deleted on success."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Messaging",
+      "item": [
+        {
+          "name": "Send Mass SMS",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"property_id\": \"{{property_id}}\",\n  \"message\": \"Reminder: rent is due on the 1st of next month.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/messaging/mass-sms",
+              "host": ["{{base_url}}"],
+              "path": ["messaging", "mass-sms"]
+            },
+            "description": "Send SMS to all active tenants. Omit `property_id` to broadcast across all properties. Max 160 chars."
+          }
+        },
+        {
+          "name": "Send Single SMS",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenant_id\": \"{{tenant_id}}\",\n  \"message\": \"Hello, please confirm receipt of your maintenance ticket.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/messaging/single-sms",
+              "host": ["{{base_url}}"],
+              "path": ["messaging", "single-sms"]
+            },
+            "description": "Send SMS to a single tenant. Max 160 chars."
+          }
+        }
+      ]
+    },
+    {
+      "name": "USSD",
+      "item": [
+        {
+          "name": "USSD Callback (Africa's Talking)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "sessionId", "value": "ATUid_demo_session_001", "type": "text" },
+                { "key": "serviceCode", "value": "*384#", "type": "text" },
+                { "key": "phoneNumber", "value": "+254712345678", "type": "text" },
+                { "key": "text", "value": "", "type": "text", "description": "Empty for initial menu; e.g. '1' or '1*1234' for navigation" },
+                { "key": "networkCode", "value": "63902", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/ussd/callback",
+              "host": ["{{base_url}}"],
+              "path": ["ussd", "callback"]
+            },
+            "description": "Africa's Talking USSD callback. Public endpoint. Returns plain text starting with `CON` (continue) or `END` (terminate)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Get Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dashboard",
+              "host": ["{{base_url}}"],
+              "path": ["dashboard"]
+            },
+            "description": "Aggregated dashboard statistics across properties, tenants, payments, and issues."
+          }
+        }
+      ]
+    }
+  ]
+}
