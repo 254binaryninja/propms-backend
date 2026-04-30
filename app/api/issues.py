@@ -4,7 +4,7 @@ from typing import Optional
 from uuid import UUID
 from datetime import datetime
 from app.api.deps import get_db, get_current_admin
-from app.models import Issue, Tenant, AdminUser, IssueStatus, IssueUrgency
+from app.models import Issue, Tenant, Property, AdminUser, IssueStatus, IssueUrgency
 from app.schemas.issue import Issue as IssueSchema, IssueCreate, IssueStatusUpdate
 from app.utils.pagination import paginate, create_pagination_meta
 
@@ -22,7 +22,7 @@ def list_issues(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """List issues with filtering and pagination."""
-    query = db.query(Issue).join(Tenant)
+    query = db.query(Issue).join(Tenant).join(Property).filter(Property.admin_id == current_user.id)
 
     # Apply filters
     if property_id:
@@ -71,8 +71,11 @@ def create_issue(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Create a new issue (admin-side)."""
-    # Verify tenant exists
-    tenant = db.query(Tenant).filter(Tenant.id == issue_data.tenant_id).first()
+    # Verify tenant exists and belongs to current admin
+    tenant = db.query(Tenant).join(Property).filter(
+        Tenant.id == issue_data.tenant_id,
+        Property.admin_id == current_user.id
+    ).first()
     if not tenant:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -118,7 +121,10 @@ def update_issue_status(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Update issue status and/or urgency."""
-    issue = db.query(Issue).filter(Issue.id == issue_id).first()
+    issue = db.query(Issue).join(Tenant).join(Property).filter(
+        Issue.id == issue_id,
+        Property.admin_id == current_user.id
+    ).first()
 
     if not issue:
         raise HTTPException(

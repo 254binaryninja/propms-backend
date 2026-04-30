@@ -14,4 +14,4 @@ def get_dashboard(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Get aggregated dashboard statistics."""
-    return get_dashboard_stats(db)
+    return get_dashboard_stats(db, current_user.id)

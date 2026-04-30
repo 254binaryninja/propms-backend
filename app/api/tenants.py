@@ -34,7 +34,7 @@ def list_tenants(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """List tenants with filtering and pagination."""
-    query = db.query(Tenant)
+    query = db.query(Tenant).join(Property).filter(Property.admin_id == current_user.id)
 
     # Apply filters
     if property_id:
@@ -76,8 +76,11 @@ def create_tenant(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Create a new tenant and send welcome SMS with PIN."""
-    # Verify property exists
-    property_obj = db.query(Property).filter(Property.id == tenant_data.property_id).first()
+    # Verify property exists and belongs to current admin
+    property_obj = db.query(Property).filter(
+        Property.id == tenant_data.property_id,
+        Property.admin_id == current_user.id
+    ).first()
     if not property_obj:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -129,7 +132,10 @@ def get_tenant(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Get tenant detail with recent payments and open issues."""
-    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    tenant = db.query(Tenant).join(Property).filter(
+        Tenant.id == tenant_id,
+        Property.admin_id == current_user.id
+    ).first()
 
     if not tenant:
         raise HTTPException(
@@ -195,7 +201,10 @@ def update_tenant(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Update tenant information."""
-    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    tenant = db.query(Tenant).join(Property).filter(
+        Tenant.id == tenant_id,
+        Property.admin_id == current_user.id
+    ).first()
 
     if not tenant:
         raise HTTPException(
@@ -241,7 +250,10 @@ def vacate_tenant(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Mark tenant as vacated and notify waitlist."""
-    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    tenant = db.query(Tenant).join(Property).filter(
+        Tenant.id == tenant_id,
+        Property.admin_id == current_user.id
+    ).first()
 
     if not tenant:
         raise HTTPException(
@@ -285,7 +297,10 @@ def reset_tenant_pin(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Reset tenant USSD PIN and send via SMS."""
-    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    tenant = db.query(Tenant).join(Property).filter(
+        Tenant.id == tenant_id,
+        Property.admin_id == current_user.id
+    ).first()
 
     if not tenant:
         raise HTTPException(

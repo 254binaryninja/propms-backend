@@ -55,6 +55,7 @@ def handle_ussd_session(
 
         elif choice == "2":
             # Prospect path - list properties
+            # NOTE: Intentionally unfiltered - USSD is public interface for prospects to browse ALL properties
             properties = db.query(Property).all()
             if not properties:
                 return "END No properties available at the moment."
@@ -97,6 +98,7 @@ def handle_ussd_session(
                 return "END Invalid selection."
 
             property_id = property_ids[property_idx]
+            # NOTE: No admin_id filter - public USSD access for prospects
             property_obj = db.query(Property).filter(Property.id == property_id).first()
 
             if not property_obj:

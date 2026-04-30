@@ -13,10 +13,12 @@ class Property(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     total_units = Column(Integer, nullable=False)
+    admin_id = Column(UUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     admin_id = Column(UUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=False)
 
     # Relationships
+    admin = relationship("AdminUser", back_populates="properties")
     tenants = relationship("Tenant", back_populates="property", cascade="all, delete-orphan")
     waitlist_entries = relationship("WaitlistEntry", back_populates="property", cascade="all, delete-orphan")
 

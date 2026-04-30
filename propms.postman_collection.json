@@ -49,6 +49,26 @@
       "name": "Auth",
       "item": [
         {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin2@propms.co.ke\",\n  \"password\": \"secure123\",\n  \"name\": \"Admin Two\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Register new admin user. Email must be unique, password min 8 chars. Returns admin profile (no auto-login)."
+          }
+        },
+        {
           "name": "Login",
           "event": [
             {

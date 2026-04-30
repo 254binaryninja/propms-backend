@@ -51,7 +51,7 @@ def list_properties(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """List all properties with derived metrics."""
-    properties = db.query(Property).all()
+    properties = db.query(Property).filter(Property.admin_id == current_user.id).all()
 
     properties_data = []
     for prop in properties:
@@ -112,7 +112,10 @@ def get_property(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Get a single property by ID."""
-    property_obj = db.query(Property).filter(Property.id == property_id).first()
+    property_obj = db.query(Property).filter(
+        Property.id == property_id,
+        Property.admin_id == current_user.id
+    ).first()
 
     if not property_obj:
         raise HTTPException(
@@ -139,7 +142,10 @@ def update_property(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Update a property."""
-    property_obj = db.query(Property).filter(Property.id == property_id).first()
+    property_obj = db.query(Property).filter(
+        Property.id == property_id,
+        Property.admin_id == current_user.id
+    ).first()
 
     if not property_obj:
         raise HTTPException(
@@ -174,7 +180,10 @@ def delete_property(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Delete a property (only if no active tenants)."""
-    property_obj = db.query(Property).filter(Property.id == property_id).first()
+    property_obj = db.query(Property).filter(
+        Property.id == property_id,
+        Property.admin_id == current_user.id
+    ).first()
 
     if not property_obj:
         raise HTTPException(
