@@ -31,7 +31,7 @@ def _load_from_secret_manager() -> None:
             key, _, value = line.partition("=")
             values[key.strip()] = value.strip().strip('"').strip("'")
 
-    # Only set values not already present in the environment
+    # Only set values aren't already present in the environment
     for key, value in values.items():
         os.environ.setdefault(key, value)
 
