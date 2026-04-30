@@ -1,6 +1,7 @@
 import random
 from datetime import date
-from typing import Optional
+from decimal import Decimal
+from typing import Optional, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -57,11 +58,11 @@ def list_tenants(
         tenant_dict = {
             "id": tenant.id,
             "name": tenant.name,
-            "phone": tenant.phone,
+            "phone": cast(str, tenant.phone),
             "house_no": tenant.house_no,
             "property_id": tenant.property_id,
             "property_name": tenant.property.name if tenant.property else None,
-            "rent_amount": float(tenant.rent_amount),
+            "rent_amount": float(cast(Decimal, tenant.rent_amount)),
             "lease_start_date": tenant.lease_start_date,
             "status": tenant.status,
             "vacated_at": tenant.vacated_at,
@@ -114,11 +115,11 @@ def create_tenant(
     return TenantSchema(
         id=new_tenant.id,
         name=new_tenant.name,
-        phone=new_tenant.phone,
+        phone=cast(str, new_tenant.phone),
         house_no=new_tenant.house_no,
         property_id=new_tenant.property_id,
         property_name=property_obj.name,
-        rent_amount=float(new_tenant.rent_amount),
+        rent_amount=float(cast(Decimal, new_tenant.rent_amount)),
         lease_start_date=new_tenant.lease_start_date,
         status=new_tenant.status,
         vacated_at=new_tenant.vacated_at,
@@ -159,11 +160,11 @@ def get_tenant(
     return TenantDetail(
         id=tenant.id,
         name=tenant.name,
-        phone=tenant.phone,
+        phone=cast(str, tenant.phone),
         house_no=tenant.house_no,
         property_id=tenant.property_id,
         property_name=tenant.property.name if tenant.property else None,
-        rent_amount=float(tenant.rent_amount),
+        rent_amount=float(cast(Decimal, tenant.rent_amount)),
         lease_start_date=tenant.lease_start_date,
         status=tenant.status,
         vacated_at=tenant.vacated_at,
@@ -172,7 +173,7 @@ def get_tenant(
             {
                 "id": p.id,
                 "tenant_id": p.tenant_id,
-                "amount": float(p.amount),
+                "amount": float(cast(Decimal, p.amount)),
                 "due_date": p.due_date,
                 "paid_date": p.paid_date,
                 "status": p.status,
@@ -232,11 +233,11 @@ def update_tenant(
     return TenantSchema(
         id=tenant.id,
         name=tenant.name,
-        phone=tenant.phone,
+        phone=cast(str, tenant.phone),
         house_no=tenant.house_no,
         property_id=tenant.property_id,
         property_name=tenant.property.name if tenant.property else None,
-        rent_amount=float(tenant.rent_amount),
+        rent_amount=float(cast(Decimal, tenant.rent_amount)),
         lease_start_date=tenant.lease_start_date,
         status=tenant.status,
         vacated_at=tenant.vacated_at,
@@ -273,11 +274,11 @@ def vacate_tenant(
         "tenant": TenantSchema(
             id=tenant.id,
             name=tenant.name,
-            phone=tenant.phone,
+            phone=cast(str, tenant.phone),
             house_no=tenant.house_no,
             property_id=tenant.property_id,
             property_name=tenant.property.name if tenant.property else None,
-            rent_amount=float(tenant.rent_amount),
+            rent_amount=float(cast(Decimal, tenant.rent_amount)),
             lease_start_date=tenant.lease_start_date,
             status=tenant.status,
             vacated_at=tenant.vacated_at,
@@ -311,7 +312,7 @@ def reset_tenant_pin(
     db.commit()
 
     sms_result = sms_service.send_single_sms(
-        tenant.phone, f"Your new PropMS PIN is {new_pin}"
+        cast(str, tenant.phone), f"Your new PropMS PIN is {new_pin}"
     )
 
     if not sms_result.get("success"):
