@@ -1,0 +1,96 @@
+name: Deploy propms
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: musandus-lab
+  GCP_REGION: europe-west3
+  SERVICE_NAME: propms
+  ARTIFACT_REGISTRY_REPO: cloud-run-source-deploy
+  # Staging uses Neon DB (configured in propms_settings secret), no Cloud SQL needed
+
+jobs:
+  deploy:
+    name: Build and Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    environment: production
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
+
+      - name: Build and Push Docker Image
+        run: |
+          docker build -t ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            -t ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:staging-latest \
+            -f app/Dockerfile .
+
+          docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:staging-latest
+
+      - name: Grant Cloud Run access to Secret Manager
+        run: |
+          PROJECT_NUMBER=$(gcloud projects describe ${{ env.GCP_PROJECT_ID }} --format='value(projectNumber)')
+          gcloud secrets add-iam-policy-binding propms_settings \
+            --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+            --role="roles/secretmanager.secretAccessor" \
+            --project=${{ env.GCP_PROJECT_ID }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-8)
+
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image=${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            --region=${{ env.GCP_REGION }} \
+            --platform=managed \
+            --memory=512Mi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=10 \
+            --timeout=100 \
+            --cpu-boost \
+            --allow-unauthenticated \
+            --set-env-vars=SETTINGS_NAME=propms_settings,REGION=${{ env.GCP_REGION }},PROJECT_ID=${{ env.GCP_PROJECT_ID }},SERVICE_URL=https://propms-staging-749592412586.europe-west3.run.app,TASK_REGION=${{ env.GCP_REGION }},propms_ENV=staging,CALLBACK_URL_OVERRIDE=https://gongagonga-staging-749592412586.europe-west3.run.app/api/v1/payins/mpesa/,PAYOUT_CALLBACK_URL_OVERRIDE=https://gongagonga-staging-749592412586.europe-west3.run.app/api/v1/payouts/mpesa/ \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --tag=v${SHORT_SHA}
+
+      - name: Show Service URL
+        run: |
+          gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region=${{ env.GCP_REGION }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --format='value(status.url)'
+
+      - name: Create Deployment Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: Main" >> $GITHUB_STEP_SUMMARY
+          echo "- **Service**: ${{ env.SERVICE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Region**: ${{ env.GCP_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Project**: ${{ env.GCP_PROJECT_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Database**: Neon DB (via propms_settings secret)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
