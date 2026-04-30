@@ -1,20 +1,27 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
-from typing import Optional
-from uuid import UUID
-from datetime import date
 import random
-from app.api.deps import get_db, get_current_admin
-from app.models import Tenant, Property, Payment, Issue, AdminUser, TenantStatus, IssueStatus
-from app.schemas.tenant import (
-    Tenant as TenantSchema,
-    TenantCreate,
-    TenantUpdate,
-    TenantVacate,
-    TenantDetail
+from datetime import date
+from decimal import Decimal
+from typing import Optional, cast
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_current_admin, get_db
+from app.models import (
+    AdminUser,
+    Issue,
+    IssueStatus,
+    Payment,
+    Property,
+    Tenant,
+    TenantStatus,
 )
+from app.schemas.tenant import Tenant as TenantSchema
+from app.schemas.tenant import TenantCreate, TenantDetail, TenantUpdate, TenantVacate
+from app.services import sms_service
+from app.utils.pagination import create_pagination_meta, paginate
 from app.utils.security import hash_password
-from app.utils.pagination import paginate, create_pagination_meta
 
 router = APIRouter()
 
@@ -31,7 +38,7 @@ def list_tenants(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: AdminUser = Depends(get_current_admin)
+    current_user: AdminUser = Depends(get_current_admin),
 ):
     """List tenants with filtering and pagination."""
     query = db.query(Tenant).join(Property).filter(Property.admin_id == current_user.id)
@@ -51,29 +58,26 @@ def list_tenants(
         tenant_dict = {
             "id": tenant.id,
             "name": tenant.name,
-            "phone": tenant.phone,
+            "phone": cast(str, tenant.phone),
             "house_no": tenant.house_no,
             "property_id": tenant.property_id,
             "property_name": tenant.property.name if tenant.property else None,
-            "rent_amount": float(tenant.rent_amount),
+            "rent_amount": float(cast(Decimal, tenant.rent_amount)),
             "lease_start_date": tenant.lease_start_date,
             "status": tenant.status,
             "vacated_at": tenant.vacated_at,
-            "created_at": tenant.created_at
+            "created_at": tenant.created_at,
         }
         tenants_data.append(tenant_dict)
 
-    return {
-        "data": tenants_data,
-        "meta": create_pagination_meta(total, page, per_page)
-    }
+    return {"data": tenants_data, "meta": create_pagination_meta(total, page, per_page)}
 
 
 @router.post("", response_model=TenantSchema, status_code=status.HTTP_201_CREATED)
 def create_tenant(
     tenant_data: TenantCreate,
     db: Session = Depends(get_db),
-    current_user: AdminUser = Depends(get_current_admin)
+    current_user: AdminUser = Depends(get_current_admin),
 ):
     """Create a new tenant and send welcome SMS with PIN."""
     # Verify property exists and belongs to current admin
@@ -83,8 +87,7 @@ def create_tenant(
     ).first()
     if not property_obj:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Property not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Property not found"
         )
 
     # Generate and hash PIN
@@ -100,7 +103,7 @@ def create_tenant(
         rent_amount=tenant_data.rent_amount,
         lease_start_date=tenant_data.lease_start_date,
         ussd_pin=hashed_pin,
-        status=TenantStatus.ACTIVE
+        status=TenantStatus.ACTIVE,
     )
 
     db.add(new_tenant)
@@ -113,15 +116,15 @@ def create_tenant(
     return TenantSchema(
         id=new_tenant.id,
         name=new_tenant.name,
-        phone=new_tenant.phone,
+        phone=cast(str, new_tenant.phone),
         house_no=new_tenant.house_no,
         property_id=new_tenant.property_id,
         property_name=property_obj.name,
-        rent_amount=float(new_tenant.rent_amount),
+        rent_amount=float(cast(Decimal, new_tenant.rent_amount)),
         lease_start_date=new_tenant.lease_start_date,
         status=new_tenant.status,
         vacated_at=new_tenant.vacated_at,
-        created_at=new_tenant.created_at
+        created_at=new_tenant.created_at,
     )
 
 
@@ -129,7 +132,7 @@ def create_tenant(
 def get_tenant(
     tenant_id: UUID,
     db: Session = Depends(get_db),
-    current_user: AdminUser = Depends(get_current_admin)
+    current_user: AdminUser = Depends(get_current_admin),
 ):
     """Get tenant detail with recent payments and open issues."""
     tenant = db.query(Tenant).join(Property).filter(
@@ -139,29 +142,33 @@ def get_tenant(
 
     if not tenant:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tenant not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
         )
 
     # Get recent payments (last 5)
-    recent_payments = db.query(Payment).filter(
-        Payment.tenant_id == tenant_id
-    ).order_by(Payment.created_at.desc()).limit(5).all()
+    recent_payments = (
+        db.query(Payment)
+        .filter(Payment.tenant_id == tenant_id)
+        .order_by(Payment.created_at.desc())
+        .limit(5)
+        .all()
+    )
 
     # Get open issues
-    open_issues = db.query(Issue).filter(
-        Issue.tenant_id == tenant_id,
-        Issue.status != IssueStatus.RESOLVED
-    ).all()
+    open_issues = (
+        db.query(Issue)
+        .filter(Issue.tenant_id == tenant_id, Issue.status != IssueStatus.RESOLVED)
+        .all()
+    )
 
     return TenantDetail(
         id=tenant.id,
         name=tenant.name,
-        phone=tenant.phone,
+        phone=cast(str, tenant.phone),
         house_no=tenant.house_no,
         property_id=tenant.property_id,
         property_name=tenant.property.name if tenant.property else None,
-        rent_amount=float(tenant.rent_amount),
+        rent_amount=float(cast(Decimal, tenant.rent_amount)),
         lease_start_date=tenant.lease_start_date,
         status=tenant.status,
         vacated_at=tenant.vacated_at,
@@ -170,12 +177,13 @@ def get_tenant(
             {
                 "id": p.id,
                 "tenant_id": p.tenant_id,
-                "amount": float(p.amount),
+                "amount": float(cast(Decimal, p.amount)),
                 "due_date": p.due_date,
                 "paid_date": p.paid_date,
                 "status": p.status,
-                "created_at": p.created_at
-            } for p in recent_payments
+                "created_at": p.created_at,
+            }
+            for p in recent_payments
         ],
         open_issues=[
             {
@@ -187,18 +195,21 @@ def get_tenant(
                 "status": i.status,
                 "source": i.source,
                 "created_at": i.created_at,
-                "resolved_at": i.resolved_at
-            } for i in open_issues
-        ]
+                "resolved_at": i.resolved_at,
+            }
+            for i in open_issues
+        ],
     )
 
 
-@router.patch("/{tenant_id}", response_model=TenantSchema, status_code=status.HTTP_200_OK)
+@router.patch(
+    "/{tenant_id}", response_model=TenantSchema, status_code=status.HTTP_200_OK
+)
 def update_tenant(
     tenant_id: UUID,
     tenant_data: TenantUpdate,
     db: Session = Depends(get_db),
-    current_user: AdminUser = Depends(get_current_admin)
+    current_user: AdminUser = Depends(get_current_admin),
 ):
     """Update tenant information."""
     tenant = db.query(Tenant).join(Property).filter(
@@ -208,8 +219,7 @@ def update_tenant(
 
     if not tenant:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tenant not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
         )
 
     # Update fields
@@ -230,15 +240,15 @@ def update_tenant(
     return TenantSchema(
         id=tenant.id,
         name=tenant.name,
-        phone=tenant.phone,
+        phone=cast(str, tenant.phone),
         house_no=tenant.house_no,
         property_id=tenant.property_id,
         property_name=tenant.property.name if tenant.property else None,
-        rent_amount=float(tenant.rent_amount),
+        rent_amount=float(cast(Decimal, tenant.rent_amount)),
         lease_start_date=tenant.lease_start_date,
         status=tenant.status,
         vacated_at=tenant.vacated_at,
-        created_at=tenant.created_at
+        created_at=tenant.created_at,
     )
 
 
@@ -247,7 +257,7 @@ def vacate_tenant(
     tenant_id: UUID,
     vacate_data: TenantVacate,
     db: Session = Depends(get_db),
-    current_user: AdminUser = Depends(get_current_admin)
+    current_user: AdminUser = Depends(get_current_admin),
 ):
     """Mark tenant as vacated and notify waitlist."""
     tenant = db.query(Tenant).join(Property).filter(
@@ -257,8 +267,7 @@ def vacate_tenant(
 
     if not tenant:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tenant not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
         )
 
     # Update tenant status
@@ -275,26 +284,28 @@ def vacate_tenant(
         "tenant": TenantSchema(
             id=tenant.id,
             name=tenant.name,
-            phone=tenant.phone,
+            phone=cast(str, tenant.phone),
             house_no=tenant.house_no,
             property_id=tenant.property_id,
             property_name=tenant.property.name if tenant.property else None,
-            rent_amount=float(tenant.rent_amount),
+            rent_amount=float(cast(Decimal, tenant.rent_amount)),
             lease_start_date=tenant.lease_start_date,
             status=tenant.status,
             vacated_at=tenant.vacated_at,
-            created_at=tenant.created_at
+            created_at=tenant.created_at,
         ),
         "waitlist_notified": False,
-        "waitlist_entry": None
+        "waitlist_entry": None,
     }
 
 
-@router.post("/{tenant_id}/reset-pin", response_model=dict, status_code=status.HTTP_200_OK)
+@router.post(
+    "/{tenant_id}/reset-pin", response_model=dict, status_code=status.HTTP_200_OK
+)
 def reset_tenant_pin(
     tenant_id: UUID,
     db: Session = Depends(get_db),
-    current_user: AdminUser = Depends(get_current_admin)
+    current_user: AdminUser = Depends(get_current_admin),
 ):
     """Reset tenant USSD PIN and send via SMS."""
     tenant = db.query(Tenant).join(Property).filter(
@@ -304,8 +315,7 @@ def reset_tenant_pin(
 
     if not tenant:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tenant not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
         )
 
     # Generate new PIN
@@ -314,9 +324,14 @@ def reset_tenant_pin(
 
     db.commit()
 
-    # TODO: Send SMS with new PIN (will implement in Phase 6)
-    # sms_service.send_single_sms(tenant.phone, f"Your new PropMS PIN is {new_pin}")
+    sms_result = sms_service.send_single_sms(
+        cast(str, tenant.phone), f"Your new PropMS PIN is {new_pin}"
+    )
 
-    return {
-        "message": f"PIN reset. SMS sent to {tenant.phone}"
-    }
+    if not sms_result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"PIN reset, but SMS failed: {sms_result.get('error')}",
+        )
+
+    return {"message": f"PIN reset. SMS sent to {tenant.phone}"}
