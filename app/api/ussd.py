@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Form
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
+
 from app.api.deps import get_db
 from app.services.ussd_service import handle_ussd_session
 
@@ -12,9 +13,9 @@ def ussd_callback(
     sessionId: str = Form(...),
     serviceCode: str = Form(...),
     phoneNumber: str = Form(...),
-    text: str = Form(...),
+    text: str = Form(""),
     networkCode: str = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Africa's Talking USSD callback endpoint.

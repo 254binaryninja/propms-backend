@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     AT_USERNAME: str
     AT_API_KEY: str
     AT_SHORTCODE: str = "*384#"
+    AT_SENDER_ID: str = "AFTKNG"
 
     # Admin Seed
     ADMIN_EMAIL: str
@@ -61,10 +62,8 @@ class Settings(BaseSettings):
     ADMIN_NAME: str
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        case_sensitive=True,
-        extra="ignore"
+        env_file=".env", case_sensitive=True, extra="ignore"
     )
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
