@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Integer, DateTime
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -14,6 +14,7 @@ class Property(Base):
     name = Column(String, nullable=False)
     total_units = Column(Integer, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    admin_id = Column(UUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=False)
 
     # Relationships
     tenants = relationship("Tenant", back_populates="property", cascade="all, delete-orphan")

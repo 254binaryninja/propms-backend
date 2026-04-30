@@ -85,7 +85,8 @@ def create_property(
     """Create a new property."""
     new_property = Property(
         name=property_data.name,
-        total_units=property_data.total_units
+        total_units=property_data.total_units,
+        admin_id=current_user.id
     )
 
     db.add(new_property)
