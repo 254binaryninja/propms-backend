@@ -1,8 +1,16 @@
+from typing import cast
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.api.deps import get_db, get_current_admin
-from app.models import Tenant, AdminUser, TenantStatus
-from app.schemas.messaging import MassSMSRequest, SingleSMSRequest, SMSResponse, SMSStatus
+
+from app.api.deps import get_current_admin, get_db
+from app.models import AdminUser, Tenant, TenantStatus
+from app.schemas.messaging import (
+    MassSMSRequest,
+    SingleSMSRequest,
+    SMSResponse,
+    SMSStatus,
+)
 from app.services import sms_service
 
 router = APIRouter()
@@ -12,7 +20,7 @@ router = APIRouter()
 def send_mass_sms(
     sms_data: MassSMSRequest,
     db: Session = Depends(get_db),
-    current_user: AdminUser = Depends(get_current_admin)
+    current_user: AdminUser = Depends(get_current_admin),
 ):
     """Send mass SMS to all tenants in a property (or all properties)."""
     query = db.query(Tenant).filter(Tenant.status == TenantStatus.ACTIVE)
@@ -25,12 +33,11 @@ def send_mass_sms(
 
     if not tenants:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No active tenants found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="No active tenants found"
         )
 
     # Extract phone numbers
-    phone_numbers = [tenant.phone for tenant in tenants]
+    phone_numbers = [cast(str, tenant.phone) for tenant in tenants]
 
     # Send SMS
     result = sms_service.send_mass_sms(phone_numbers, sms_data.message)
@@ -39,12 +46,12 @@ def send_mass_sms(
         return SMSResponse(
             recipients=len(phone_numbers),
             at_message_id="bulk-message-id",
-            status=SMSStatus.QUEUED
+            status=SMSStatus.QUEUED,
         )
     else:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"SMS sending failed: {result.get('error')}"
+            detail=f"SMS sending failed: {result.get('error')}",
         )
 
 
@@ -52,28 +59,25 @@ def send_mass_sms(
 def send_single_sms(
     sms_data: SingleSMSRequest,
     db: Session = Depends(get_db),
-    current_user: AdminUser = Depends(get_current_admin)
+    current_user: AdminUser = Depends(get_current_admin),
 ):
     """Send SMS to a single tenant."""
     tenant = db.query(Tenant).filter(Tenant.id == sms_data.tenant_id).first()
 
     if not tenant:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tenant not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
         )
 
     # Send SMS
-    result = sms_service.send_single_sms(tenant.phone, sms_data.message)
+    result = sms_service.send_single_sms(cast(str, tenant.phone), sms_data.message)
 
     if result.get("success"):
         return SMSResponse(
-            recipients=1,
-            at_message_id="single-message-id",
-            status=SMSStatus.QUEUED
+            recipients=1, at_message_id="single-message-id", status=SMSStatus.QUEUED
         )
     else:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"SMS sending failed: {result.get('error')}"
+            detail=f"SMS sending failed: {result.get('error')}",
         )
