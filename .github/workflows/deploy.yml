@@ -11,7 +11,6 @@ env:
   GCP_REGION: europe-west3
   SERVICE_NAME: propms
   ARTIFACT_REGISTRY_REPO: cloud-run-source-deploy
-  # Staging uses Neon DB (configured in propms_settings secret), no Cloud SQL needed
 
 jobs:
   deploy:
@@ -48,14 +47,6 @@ jobs:
 
           docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
           docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:staging-latest
-
-      - name: Grant Cloud Run access to Secret Manager
-        run: |
-          PROJECT_NUMBER=$(gcloud projects describe ${{ env.GCP_PROJECT_ID }} --format='value(projectNumber)')
-          gcloud secrets add-iam-policy-binding propms_settings \
-            --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-            --role="roles/secretmanager.secretAccessor" \
-            --project=${{ env.GCP_PROJECT_ID }}
 
       - name: Deploy to Cloud Run
         run: |
