@@ -1,18 +1,30 @@
+from decimal import Decimal
+from typing import Dict, cast
+
 from sqlalchemy.orm import Session
-from typing import Dict
-from app.models import Tenant, Property, Issue, Payment, WaitlistEntry, IssueType, IssueUrgency, IssueStatus, IssueSource, WaitlistSource, TenantStatus, PaymentStatus
+
+from app.models import (
+    Issue,
+    IssueSource,
+    IssueStatus,
+    IssueType,
+    IssueUrgency,
+    Payment,
+    PaymentStatus,
+    Property,
+    Tenant,
+    TenantStatus,
+    WaitlistEntry,
+    WaitlistSource,
+)
 from app.utils.security import verify_password
-from datetime import date
 
 # In-memory session storage (for production, use Redis)
 sessions: Dict[str, dict] = {}
 
 
 def handle_ussd_session(
-    db: Session,
-    session_id: str,
-    phone_number: str,
-    text: str
+    db: Session, session_id: str, phone_number: str, text: str
 ) -> str:
     """
     Handle USSD session and return response.
@@ -27,16 +39,12 @@ def handle_ussd_session(
         USSD response string (CON... or END...)
     """
     # Parse user input
-    inputs = text.split('*') if text else []
+    inputs = text.split("*") if text else []
     level = len(inputs)
 
     # Initialize session state if new
     if session_id not in sessions:
-        sessions[session_id] = {
-            "phone": phone_number,
-            "state": "root",
-            "data": {}
-        }
+        sessions[session_id] = {"phone": phone_number, "state": "root", "data": {}}
 
     session = sessions[session_id]
 
@@ -76,12 +84,15 @@ def handle_ussd_session(
             pin_input = inputs[1]
 
             # Validate PIN
-            tenant = db.query(Tenant).filter(
-                Tenant.phone == phone_number,
-                Tenant.status == TenantStatus.ACTIVE
-            ).first()
+            tenant = (
+                db.query(Tenant)
+                .filter(
+                    Tenant.phone == phone_number, Tenant.status == TenantStatus.ACTIVE
+                )
+                .first()
+            )
 
-            if not tenant or not verify_password(pin_input, tenant.ussd_pin):
+            if not tenant or not verify_password(pin_input, cast(str, tenant.ussd_pin)):
                 return "END Invalid PIN. Please try again."
 
             # PIN valid - show tenant menu
@@ -103,11 +114,15 @@ def handle_ussd_session(
                 return "END Property not found."
 
             # Calculate vacant units
-            occupied = db.query(Tenant).filter(
-                Tenant.property_id == property_id,
-                Tenant.status == TenantStatus.ACTIVE
-            ).count()
-            vacant = property_obj.total_units - occupied
+            occupied = (
+                db.query(Tenant)
+                .filter(
+                    Tenant.property_id == property_id,
+                    Tenant.status == TenantStatus.ACTIVE,
+                )
+                .count()
+            )
+            vacant = int(cast(int, property_obj.total_units)) - occupied
 
             session["state"] = "waitlist_prompt"
             session["data"]["property_id"] = property_id
@@ -132,13 +147,21 @@ def handle_ussd_session(
                     return "END Error: Tenant not found."
 
                 # Get unpaid payments
-                unpaid = db.query(Payment).filter(
-                    Payment.tenant_id == tenant_id,
-                    Payment.status.in_([PaymentStatus.PENDING, PaymentStatus.OVERDUE])
-                ).order_by(Payment.due_date).first()
+                unpaid = (
+                    db.query(Payment)
+                    .filter(
+                        Payment.tenant_id == tenant_id,
+                        Payment.status.in_(
+                            [PaymentStatus.PENDING, PaymentStatus.OVERDUE]
+                        ),
+                    )
+                    .order_by(Payment.due_date)
+                    .first()
+                )
 
                 if unpaid:
-                    return f"END Outstanding balance: KES {float(unpaid.amount):,.2f}\nDue: {unpaid.due_date}"
+                    amount = float(cast(Decimal, unpaid.amount))
+                    return f"END Outstanding balance: KES {amount:,.2f}\nDue: {unpaid.due_date}"
                 else:
                     return "END No outstanding payments. Thank you!"
 
@@ -168,7 +191,7 @@ def handle_ussd_session(
             issue_types = {
                 "1": IssueType.WATER,
                 "2": IssueType.ELECTRICITY,
-                "3": IssueType.OTHER
+                "3": IssueType.OTHER,
             }
 
             if choice not in issue_types:
@@ -180,7 +203,7 @@ def handle_ussd_session(
                 type=issue_types[choice],
                 urgency=IssueUrgency.HIGH,  # Default high for USSD
                 status=IssueStatus.PENDING,
-                source=IssueSource.USSD
+                source=IssueSource.USSD,
             )
 
             db.add(new_issue)
@@ -201,17 +224,21 @@ def handle_ussd_session(
                 name=name,
                 phone=phone_number,
                 property_id=property_id,
-                source=WaitlistSource.USSD
+                source=WaitlistSource.USSD,
             )
 
             db.add(new_entry)
             db.commit()
 
             # Calculate position
-            position = db.query(WaitlistEntry).filter(
-                WaitlistEntry.property_id == property_id,
-                WaitlistEntry.created_at <= new_entry.created_at
-            ).count()
+            position = (
+                db.query(WaitlistEntry)
+                .filter(
+                    WaitlistEntry.property_id == property_id,
+                    WaitlistEntry.created_at <= new_entry.created_at,
+                )
+                .count()
+            )
 
             # Clear session
             if session_id in sessions:
