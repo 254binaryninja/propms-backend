@@ -20,6 +20,7 @@ from app.models import (
 from app.schemas.tenant import Tenant as TenantSchema
 from app.schemas.tenant import TenantCreate, TenantDetail, TenantUpdate, TenantVacate
 from app.services import sms_service
+from app.services.sms_service import send_welcome_sms, send_single_sms
 from app.utils.pagination import create_pagination_meta, paginate
 from app.utils.security import hash_password
 
@@ -110,8 +111,10 @@ def create_tenant(
     db.commit()
     db.refresh(new_tenant)
 
-    # TODO: Send welcome SMS with PIN (will implement in Phase 6)
-    # sms_service.send_welcome_sms(new_tenant.phone, plain_pin)
+    # Send welcome SMS with PIN
+    sms_result = send_welcome_sms(new_tenant.phone, plain_pin)
+    if not sms_result.get("success"):
+        print(f"Warning: Failed to send welcome SMS to {new_tenant.phone}: {sms_result.get('error')}")
 
     return TenantSchema(
         id=new_tenant.id,
@@ -324,14 +327,12 @@ def reset_tenant_pin(
 
     db.commit()
 
-    sms_result = sms_service.send_single_sms(
-        cast(str, tenant.phone), f"Your new PropMS PIN is {new_pin}"
-    )
-
+    # Send SMS with new PIN
+    sms_result = send_single_sms(cast(str, tenant.phone), f"Your new PropMS PIN is {new_pin}")
     if not sms_result.get("success"):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"PIN reset, but SMS failed: {sms_result.get('error')}",
+            detail=f"PIN reset but SMS sending failed: {sms_result.get('error')}",
         )
 
     return {"message": f"PIN reset. SMS sent to {tenant.phone}"}

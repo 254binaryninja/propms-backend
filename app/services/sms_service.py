@@ -32,7 +32,7 @@ def send_sms_with_sender(message: str, recipients: Sequence[str]):
     """Send SMS using configured sender ID if available."""
     normalized = list(recipients)
     sender_id = getattr(settings, "AT_SENDER_ID", None)
-    if sender_id:
+    if sender_id and settings.AT_USERNAME != "sandbox":
         return sms.send(message, normalized, sender_id=sender_id)
     return sms.send(message, normalized)
 
