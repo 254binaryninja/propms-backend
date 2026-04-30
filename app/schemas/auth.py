@@ -1,5 +1,12 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from uuid import UUID
+
+
+class RegisterRequest(BaseModel):
+    """Admin registration request schema."""
+    email: EmailStr
+    password: str = Field(..., min_length=8)
+    name: str = Field(..., min_length=1)
 
 
 class LoginRequest(BaseModel):

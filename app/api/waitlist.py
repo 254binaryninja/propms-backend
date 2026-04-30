@@ -34,7 +34,7 @@ def list_waitlist(
     query = db.query(
         WaitlistEntry,
         position_query
-    )
+    ).join(Property).filter(Property.admin_id == current_user.id)
 
     # Apply filter
     if property_id:
@@ -76,8 +76,11 @@ def add_to_waitlist(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Add entry to waitlist and send confirmation SMS."""
-    # Verify property exists
-    property_obj = db.query(Property).filter(Property.id == waitlist_data.property_id).first()
+    # Verify property exists and belongs to current admin
+    property_obj = db.query(Property).filter(
+        Property.id == waitlist_data.property_id,
+        Property.admin_id == current_user.id
+    ).first()
     if not property_obj:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -124,7 +127,10 @@ def remove_from_waitlist(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Remove entry from waitlist."""
-    entry = db.query(WaitlistEntry).filter(WaitlistEntry.id == entry_id).first()
+    entry = db.query(WaitlistEntry).join(Property).filter(
+        WaitlistEntry.id == entry_id,
+        Property.admin_id == current_user.id
+    ).first()
 
     if not entry:
         raise HTTPException(
@@ -146,7 +152,10 @@ def promote_waitlist_to_tenant(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Convert waitlist entry to active tenant."""
-    entry = db.query(WaitlistEntry).filter(WaitlistEntry.id == entry_id).first()
+    entry = db.query(WaitlistEntry).join(Property).filter(
+        WaitlistEntry.id == entry_id,
+        Property.admin_id == current_user.id
+    ).first()
 
     if not entry:
         raise HTTPException(

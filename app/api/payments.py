@@ -4,7 +4,7 @@ from typing import Optional
 from uuid import UUID
 from datetime import date, datetime
 from app.api.deps import get_db, get_current_admin
-from app.models import Payment, Tenant, AdminUser, PaymentStatus
+from app.models import Payment, Tenant, Property, AdminUser, PaymentStatus
 from app.schemas.payment import Payment as PaymentSchema, PaymentCreate, PaymentMarkPaid
 from app.utils.pagination import paginate, create_pagination_meta
 
@@ -34,7 +34,7 @@ def list_payments(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """List payments with filtering and pagination."""
-    query = db.query(Payment).join(Tenant)
+    query = db.query(Payment).join(Tenant).join(Property).filter(Property.admin_id == current_user.id)
 
     # Apply filters
     if property_id:
@@ -96,8 +96,11 @@ def create_payment(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Create a new payment record."""
-    # Verify tenant exists
-    tenant = db.query(Tenant).filter(Tenant.id == payment_data.tenant_id).first()
+    # Verify tenant exists and belongs to current admin
+    tenant = db.query(Tenant).join(Property).filter(
+        Tenant.id == payment_data.tenant_id,
+        Property.admin_id == current_user.id
+    ).first()
     if not tenant:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -143,7 +146,10 @@ def mark_payment_paid(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Mark a payment as paid."""
-    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    payment = db.query(Payment).join(Tenant).join(Property).filter(
+        Payment.id == payment_id,
+        Property.admin_id == current_user.id
+    ).first()
 
     if not payment:
         raise HTTPException(
@@ -182,7 +188,10 @@ def send_payment_reminder(
     current_user: AdminUser = Depends(get_current_admin)
 ):
     """Send rent reminder SMS for this payment."""
-    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    payment = db.query(Payment).join(Tenant).join(Property).filter(
+        Payment.id == payment_id,
+        Property.admin_id == current_user.id
+    ).first()
 
     if not payment:
         raise HTTPException(
